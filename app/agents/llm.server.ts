@@ -176,10 +176,11 @@ export async function sendAgentChatMessage(
   agentId: string,
   userMessage: string,
 ): Promise<ChatResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const shopSetting = await db.shopSetting.findUnique({ where: { shop } });
+  const apiKey = shopSetting?.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error(
-      "ANTHROPIC_API_KEY is not configured. Add it to your environment to enable agent chat.",
+      "No Anthropic API key configured. Add one in Settings, or set ANTHROPIC_API_KEY in the app's environment.",
     );
   }
 

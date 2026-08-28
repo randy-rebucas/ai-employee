@@ -240,6 +240,16 @@ model Document {
   @@index([shop, agentId])
 }
 
+// One row per shop for app-level configuration that isn't tied to any
+// single agent. Currently just the merchant's own Anthropic API key, so
+// chat can run on their key instead of (or in addition to) the app's
+// shared ANTHROPIC_API_KEY environment variable.
+model ShopSetting {
+  shop            String   @id
+  anthropicApiKey String?
+  updatedAt       DateTime @updatedAt
+}
+
 model AuditLog {
   id          String   @id @default(cuid())
   shop        String

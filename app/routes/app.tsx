@@ -22,7 +22,7 @@ export default function App() {
         <s-link href="/app/briefing">Daily Briefing</s-link>
         <s-link href="/app/approvals">Approvals</s-link>
         <s-link href="/app/activity">Activity</s-link>
-        <s-link href="/app/settings/permissions">Permissions</s-link>
+        <s-link href="/app/settings">Settings</s-link>
       </s-app-nav>
       <Outlet />
     </AppProvider>
