@@ -44,9 +44,16 @@ export default function NewAgent() {
   const isSubmitting = fetcher.state !== "idle";
 
   useEffect(() => {
-    if (fetcher.data?.ok) {
-      navigate(`/app/workforce/${fetcher.data.agentId}`);
-    }
+    if (!fetcher.data?.ok) return;
+    const agentId = fetcher.data.agentId;
+
+    const duration = 2000;
+    shopify.toast.show("Employee created", { duration });
+
+    const timer = setTimeout(() => {
+      navigate(`/app/workforce/${agentId}`);
+    }, duration);
+    return () => clearTimeout(timer);
   }, [fetcher.data, navigate]);
 
   return (
