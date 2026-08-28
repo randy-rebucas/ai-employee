@@ -1,9 +1,9 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "8de3aabdad3246dff159dcddeb8d5056"
-application_url = "https://example.com"
+application_url = "https://ai-employee-theta.vercel.app"
 embedded = true
-name = "ai-employee"
+name = "AI Employee"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
@@ -53,8 +53,7 @@ api_version = "2026-10"
   topics = [ "products/update" ]
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://ai-employee-theta.vercel.app/api/auth" ]
 
 [build]
-include_config_on_deploy = true
 automatically_update_urls_on_dev = true
