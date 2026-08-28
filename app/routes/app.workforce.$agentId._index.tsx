@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
@@ -112,11 +113,27 @@ const MEMORY_TYPE_LABELS: Record<string, string> = {
   instruction: "Instruction",
 };
 
+const TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "instructions", label: "Instructions" },
+  { id: "memory", label: "Memory" },
+  { id: "documents", label: "Documents" },
+  { id: "rules", label: "Rules" },
+  { id: "collaboration", label: "Collaboration" },
+  { id: "activity", label: "Activity" },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
 export default function AgentDetail() {
   const { agent, sentMessages, receivedMessages, performance, instructionVersions, documents } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const isSubmitting = fetcher.state !== "idle";
+  const [activeTab, setActiveTab] = useState<TabId>("overview");
+
+  const hasCollaboration = sentMessages.length > 0 || receivedMessages.length > 0;
+  const visibleTabs = TABS.filter((tab) => tab.id !== "collaboration" || hasCollaboration);
 
   return (
     <s-page heading={agent.name}>
@@ -124,46 +141,65 @@ export default function AgentDetail() {
         Chat with {agent.name}
       </s-button>
 
-      <s-section heading="Profile">
-        <s-stack direction="block" gap="small">
-          <s-text>
-            {agent.jobTitle} - {agent.department}
-          </s-text>
-          <s-text color="subdued">{agent.description}</s-text>
-          <s-stack direction="inline" gap="small">
-            <s-badge>Autonomy: {agent.autonomy}</s-badge>
-            {agent.isCustom && <s-badge tone="info">Custom</s-badge>}
-          </s-stack>
+      <s-section>
+        <s-stack direction="inline" gap="small">
+          {visibleTabs.map((tab) => (
+            <s-button
+              key={tab.id}
+              variant={activeTab === tab.id ? "primary" : "tertiary"}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </s-button>
+          ))}
         </s-stack>
       </s-section>
 
-      <s-section heading="Performance">
-        <s-stack direction="block" gap="small">
-          <s-stack direction="inline" gap="small">
-            <s-badge>{performance.tasksCompleted} tasks completed</s-badge>
-            <s-badge>{performance.recommendations} recommendations</s-badge>
-            <s-badge tone="success">{performance.approved} approved</s-badge>
-            <s-badge tone="critical">{performance.rejected} rejected</s-badge>
-            {performance.pending > 0 && (
-              <s-badge tone="warning">{performance.pending} pending</s-badge>
-            )}
-          </s-stack>
-          {performance.approvalRatePercent !== null && (
-            <s-text color="subdued">
-              Approval rate: {performance.approvalRatePercent}%
-            </s-text>
-          )}
-          {performance.recommendations > 0 && (
-            <s-text color="subdued">
-              Confidence mix: {performance.confidenceDistribution.highPercent}% high,{" "}
-              {performance.confidenceDistribution.mediumPercent}% medium,{" "}
-              {performance.confidenceDistribution.lowPercent}% low
-            </s-text>
-          )}
-        </s-stack>
-      </s-section>
+      {activeTab === "overview" && (
+        <>
+          <s-section heading="Profile">
+            <s-stack direction="block" gap="small">
+              <s-text>
+                {agent.jobTitle} - {agent.department}
+              </s-text>
+              <s-text color="subdued">{agent.description}</s-text>
+              <s-stack direction="inline" gap="small">
+                <s-badge>Autonomy: {agent.autonomy}</s-badge>
+                {agent.isCustom && <s-badge tone="info">Custom</s-badge>}
+              </s-stack>
+            </s-stack>
+          </s-section>
 
-      <s-section heading={`Instructions & business knowledge (v${agent.instructionsVersion})`}>
+          <s-section heading="Performance">
+            <s-stack direction="block" gap="small">
+              <s-stack direction="inline" gap="small">
+                <s-badge>{performance.tasksCompleted} tasks completed</s-badge>
+                <s-badge>{performance.recommendations} recommendations</s-badge>
+                <s-badge tone="success">{performance.approved} approved</s-badge>
+                <s-badge tone="critical">{performance.rejected} rejected</s-badge>
+                {performance.pending > 0 && (
+                  <s-badge tone="warning">{performance.pending} pending</s-badge>
+                )}
+              </s-stack>
+              {performance.approvalRatePercent !== null && (
+                <s-text color="subdued">
+                  Approval rate: {performance.approvalRatePercent}%
+                </s-text>
+              )}
+              {performance.recommendations > 0 && (
+                <s-text color="subdued">
+                  Confidence mix: {performance.confidenceDistribution.highPercent}% high,{" "}
+                  {performance.confidenceDistribution.mediumPercent}% medium,{" "}
+                  {performance.confidenceDistribution.lowPercent}% low
+                </s-text>
+              )}
+            </s-stack>
+          </s-section>
+        </>
+      )}
+
+      {activeTab === "instructions" && (
+        <s-section heading={`Instructions & business knowledge (v${agent.instructionsVersion})`}>
         <s-stack direction="block" gap="base">
           <fetcher.Form method="POST">
             <input type="hidden" name="intent" value="edit_instructions" />
@@ -217,8 +253,10 @@ export default function AgentDetail() {
             </s-stack>
           )}
         </s-stack>
-      </s-section>
+        </s-section>
+      )}
 
+      {activeTab === "memory" && (
       <s-section heading={`Memory (${agent.memories.length})`}>
         <s-stack direction="block" gap="base">
           {fetcher.data && !fetcher.data.ok && (
@@ -273,7 +311,9 @@ export default function AgentDetail() {
           </fetcher.Form>
         </s-stack>
       </s-section>
+      )}
 
+      {activeTab === "documents" && (
       <s-section heading={`Documents (${documents.length})`}>
         <s-stack direction="block" gap="base">
           <s-text color="subdued">
@@ -317,7 +357,9 @@ export default function AgentDetail() {
           </fetcher.Form>
         </s-stack>
       </s-section>
+      )}
 
+      {activeTab === "rules" && (
       <s-section heading={`Rules (${agent.rules.length})`}>
         <s-stack direction="block" gap="small">
           {agent.rules.length === 0 && (
@@ -336,8 +378,9 @@ export default function AgentDetail() {
           ))}
         </s-stack>
       </s-section>
+      )}
 
-      {(sentMessages.length > 0 || receivedMessages.length > 0) && (
+      {activeTab === "collaboration" && hasCollaboration && (
         <s-section heading="Collaboration with other employees">
           <s-stack direction="block" gap="small">
             {receivedMessages.map((message) => (
@@ -370,6 +413,7 @@ export default function AgentDetail() {
         </s-section>
       )}
 
+      {activeTab === "activity" && (
       <s-section heading={`Tasks (${agent.tasks.length})`}>
         <s-stack direction="block" gap="small">
           {agent.tasks.length === 0 && (
@@ -385,7 +429,9 @@ export default function AgentDetail() {
           ))}
         </s-stack>
       </s-section>
+      )}
 
+      {activeTab === "activity" && (
       <s-section heading="Recent decisions">
         <s-stack direction="block" gap="base">
           {agent.decisions.length === 0 && (
@@ -408,6 +454,7 @@ export default function AgentDetail() {
           ))}
         </s-stack>
       </s-section>
+      )}
     </s-page>
   );
 }
