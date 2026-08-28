@@ -49,6 +49,67 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
+/** Renders **bold**, "- " bullets, and "1. " numbered lines from LLM replies as native Polaris text/list elements instead of one run-on paragraph with literal asterisks. Not a full Markdown parser - just the subset the chat prompt's replies actually use. */
+function ChatMarkdown({ content }: { content: string }) {
+  type Block = { type: "ul" | "ol" | "p"; lines: string[] };
+  const blocks: Block[] = [];
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === "") continue;
+
+    const bulletMatch = /^[-*]\s+(.*)/.exec(line);
+    const numberedMatch = /^\d+\.\s+(.*)/.exec(line);
+    const type: Block["type"] = bulletMatch ? "ul" : numberedMatch ? "ol" : "p";
+    const text = bulletMatch?.[1] ?? numberedMatch?.[1] ?? line;
+
+    const last = blocks[blocks.length - 1];
+    if (last && last.type === type && type !== "p") {
+      last.lines.push(text);
+    } else {
+      blocks.push({ type, lines: [text] });
+    }
+  }
+
+  return (
+    <s-stack direction="block" gap="small-200">
+      {blocks.map((block, i) => {
+        if (block.type === "ul") {
+          return (
+            <s-unordered-list key={i}>
+              {block.lines.map((line, j) => (
+                <s-list-item key={j}>{renderInlineMarkdown(line)}</s-list-item>
+              ))}
+            </s-unordered-list>
+          );
+        }
+        if (block.type === "ol") {
+          return (
+            <s-ordered-list key={i}>
+              {block.lines.map((line, j) => (
+                <s-list-item key={j}>{renderInlineMarkdown(line)}</s-list-item>
+              ))}
+            </s-ordered-list>
+          );
+        }
+        return <s-paragraph key={i}>{renderInlineMarkdown(block.lines.join(" "))}</s-paragraph>;
+      })}
+    </s-stack>
+  );
+}
+
+function renderInlineMarkdown(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**") ? (
+      <s-text key={i} type="strong">
+        {part.slice(2, -2)}
+      </s-text>
+    ) : (
+      part
+    ),
+  );
+}
+
 export default function AgentChat() {
   const { agent, messages } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
@@ -83,7 +144,11 @@ export default function AgentChat() {
                 <s-text type="strong">
                   {message.role === "user" ? "You" : agent.name}
                 </s-text>
-                <s-text>{message.content}</s-text>
+                {message.role === "user" ? (
+                  <s-text>{message.content}</s-text>
+                ) : (
+                  <ChatMarkdown content={message.content} />
+                )}
               </s-stack>
             </s-box>
           ))}

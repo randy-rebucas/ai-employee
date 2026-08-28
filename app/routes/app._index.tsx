@@ -71,14 +71,14 @@ const RUNNABLE_DEPARTMENT_KEYS = new Set([
   "inventory-manager",
 ]);
 
-const RESULT_LABELS: Record<string, { icon: string; title: string }> = {
-  operations: { icon: "📦", title: "Operations" },
-  finance: { icon: "💰", title: "Finance" },
-  product: { icon: "🛍️", title: "Product Catalog" },
-  customerSuccess: { icon: "💬", title: "Customer Success" },
-  marketing: { icon: "📣", title: "Marketing" },
-  inventory: { icon: "📊", title: "Inventory" },
-};
+const RESULT_LABELS = {
+  operations: { icon: "package", title: "Operations" },
+  finance: { icon: "money", title: "Finance" },
+  product: { icon: "product", title: "Product Catalog" },
+  customerSuccess: { icon: "chat", title: "Customer Success" },
+  marketing: { icon: "megaphone", title: "Marketing" },
+  inventory: { icon: "inventory", title: "Inventory" },
+} as const satisfies Record<string, { icon: string; title: string }>;
 
 function relativeTime(date: Date | null) {
   if (!date) return "No activity yet";
@@ -170,6 +170,15 @@ const AGENT_KEY_RUNNERS: Record<string, (shop: string, admin: any) => Promise<un
   "inventory-manager": runInventoryForecast,
 };
 
+const RESULT_LABEL_BY_AGENT_KEY: Record<string, string> = {
+  "operations-manager": "operations",
+  "finance-manager": "finance",
+  "product-manager": "product",
+  "customer-success": "customerSuccess",
+  "marketing-manager": "marketing",
+  "inventory-manager": "inventory",
+};
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
@@ -220,7 +229,10 @@ function StatTile({ label, value, tone }: { label: string; value: number | strin
 }
 
 function ScanResultCard({ id, result }: { id: string; result: any }) {
-  const meta = RESULT_LABELS[id] ?? { icon: "🔎", title: id };
+  const meta = (RESULT_LABELS as Record<string, { icon: string; title: string }>)[id] ?? {
+    icon: "question-circle",
+    title: id,
+  };
   const flagged =
     typeof result?.flagged === "number"
       ? result.flagged
@@ -232,7 +244,7 @@ function ScanResultCard({ id, result }: { id: string; result: any }) {
     <s-box padding="base" borderWidth="base" borderRadius="base">
       <s-stack direction="block" gap="small-200">
         <s-stack direction="inline" gap="small" alignItems="center">
-          <s-text>{meta.icon}</s-text>
+          <s-icon type={meta.icon as any} />
           <s-heading>{meta.title}</s-heading>
           {flagged > 0 ? (
             <s-badge tone="warning">{flagged} flagged</s-badge>
@@ -296,50 +308,55 @@ function AgentAvatar({ id, department, status }: { id: string; department: strin
 }
 
 function AgentCardRow({ agent }: { agent: AgentCard }) {
-  const runFetcher = useFetcher();
+  const runFetcher = useFetcher<typeof action>();
   const isRunningThis = runFetcher.state !== "idle";
   const statusMeta = STATUS_META[agent.status];
   const canRunDirectly = RUNNABLE_DEPARTMENT_KEYS.has(agent.key);
+  const runResult = runFetcher.data && "single" in runFetcher.data ? runFetcher.data.single : null;
 
   return (
-    <s-box padding="base" borderWidth="base" borderRadius="base">
-      <s-stack direction="block" gap="base">
-        <s-stack direction="inline" gap="base" alignItems="center">
-          <AgentAvatar id={agent.id} department={agent.department} status={agent.status} />
+    <s-box padding="base" borderWidth="base" borderRadius="base" inlineSize="100%" blockSize="100%">
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--p-space-400, 16px)", height: "100%" }}>
+        <div style={{ display: "flex", gap: "var(--p-space-400, 16px)", alignItems: "flex-start", flex: 1 }}>
+          <div style={{ flexShrink: 0 }}>
+            <AgentAvatar id={agent.id} department={agent.department} status={agent.status} />
+          </div>
 
-          <s-stack direction="block" gap="small">
-            <s-stack direction="inline" gap="small" alignItems="center">
-              <s-link href={`/app/workforce/${agent.id}`}>
-                <s-heading>{agent.name}</s-heading>
-              </s-link>
-              <s-badge tone={statusMeta.tone}>{statusMeta.label}</s-badge>
-              {agent.isCustom && <s-badge tone="info">Custom</s-badge>}
-            </s-stack>
-            <s-text color="subdued">
-              {agent.jobTitle} - {agent.department}
-            </s-text>
-            <s-text>
-              {agent.currentTask
-                ? `Current: ${agent.currentTask}`
-                : "No tasks yet - run a scan to get started."}
-            </s-text>
-            <s-stack direction="inline" gap="small" alignItems="center">
-              <s-badge>{agent.taskCount} task{agent.taskCount === 1 ? "" : "s"}</s-badge>
-              {agent.alerts > 0 && (
-                <s-badge tone="warning">{agent.alerts} alert{agent.alerts === 1 ? "" : "s"}</s-badge>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <s-stack direction="block" gap="small">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--p-space-200, 8px)", alignItems: "center" }}>
+                <s-link href={`/app/workforce/${agent.id}`}>
+                  <s-heading>{agent.name}</s-heading>
+                </s-link>
+                <s-badge tone={statusMeta.tone}>{statusMeta.label}</s-badge>
+                {agent.isCustom && <s-badge tone="info">Custom</s-badge>}
+              </div>
+              <s-text color="subdued">
+                {agent.jobTitle} - {agent.department}
+              </s-text>
+              <s-text>
+                {agent.currentTask
+                  ? `Current: ${agent.currentTask}`
+                  : "No tasks yet - run a scan to get started."}
+              </s-text>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--p-space-200, 8px)", alignItems: "center" }}>
+                <s-badge>{agent.taskCount} task{agent.taskCount === 1 ? "" : "s"}</s-badge>
+                {agent.alerts > 0 && (
+                  <s-badge tone="warning">{agent.alerts} alert{agent.alerts === 1 ? "" : "s"}</s-badge>
+                )}
+                <s-text color="subdued">
+                  Last activity: {relativeTime(agent.lastActivityAt ? new Date(agent.lastActivityAt) : null)}
+                </s-text>
+              </div>
+              {agent.recommendations > 0 && (
+                <s-text color="subdued">
+                  {agent.recommendations} recommendation{agent.recommendations === 1 ? "" : "s"} -{" "}
+                  {agent.approved} approved
+                </s-text>
               )}
-              <s-text color="subdued">
-                Last activity: {relativeTime(agent.lastActivityAt ? new Date(agent.lastActivityAt) : null)}
-              </s-text>
             </s-stack>
-            {agent.recommendations > 0 && (
-              <s-text color="subdued">
-                {agent.recommendations} recommendation{agent.recommendations === 1 ? "" : "s"} -{" "}
-                {agent.approved} approved
-              </s-text>
-            )}
-          </s-stack>
-        </s-stack>
+          </div>
+        </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
           {canRunDirectly && (
@@ -355,7 +372,14 @@ function AgentCardRow({ agent }: { agent: AgentCard }) {
             View details
           </s-button>
         </div>
-      </s-stack>
+
+        {runResult && (
+          <ScanResultCard
+            id={RESULT_LABEL_BY_AGENT_KEY[runResult.key] ?? runResult.key}
+            result={runResult.result}
+          />
+        )}
+      </div>
     </s-box>
   );
 }
@@ -430,23 +454,11 @@ export default function Index() {
         </s-section>
       )}
 
-      {data?.single && (
-        <s-section heading="Scan result">
-          <ScanResultCard
-            id={
-              Object.entries(AGENT_KEY_RUNNERS_UI).find(([, key]) => key === data.single.key)?.[0] ??
-              data.single.key
-            }
-            result={data.single.result}
-          />
-        </s-section>
-      )}
-
       <s-section heading="Your team">
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
             gap: "var(--p-space-400, 16px)",
           }}
         >
@@ -458,15 +470,6 @@ export default function Index() {
     </s-page>
   );
 }
-
-const AGENT_KEY_RUNNERS_UI: Record<string, string> = {
-  operations: "operations-manager",
-  finance: "finance-manager",
-  product: "product-manager",
-  customerSuccess: "customer-success",
-  marketing: "marketing-manager",
-  inventory: "inventory-manager",
-};
 
 export const headers: HeadersFunction = (headersArgs) => {
   return boundary.headers(headersArgs);

@@ -27,14 +27,33 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
-const ACTION_LABELS: Record<string, string> = {
-  "decision.created": "Recorded a decision",
-  "decision.approved": "Merchant approved",
-  "decision.rejected": "Merchant rejected",
-  "decision.executed": "Executed action",
-  "decision.execution_failed": "Action failed",
-  "agent.created": "Employee created",
+const ACTION_META: Record<string, { label: string; tone: "success" | "critical" | "info" | "neutral" }> = {
+  "decision.created": { label: "Recorded a decision", tone: "info" },
+  "decision.approved": { label: "Merchant approved", tone: "success" },
+  "decision.rejected": { label: "Merchant rejected", tone: "neutral" },
+  "decision.executed": { label: "Executed action", tone: "success" },
+  "decision.execution_failed": { label: "Action failed", tone: "critical" },
+  "agent.created": { label: "Employee created", tone: "info" },
 };
+const DEFAULT_ACTION_META = { label: undefined, tone: "neutral" as const };
+
+/** Locale pinned so server-rendered and client-hydrated timestamps always match; audit timestamps also read better as an unambiguous absolute time than a locale-varying one. */
+function formatTimestamp(date: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function executionError(action: string, detail: string) {
+  if (action !== "decision.execution_failed") return null;
+  try {
+    const parsed = JSON.parse(detail) as { error?: string };
+    return parsed.error ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export default function Activity() {
   const { logs } = useLoaderData<typeof loader>();
@@ -46,24 +65,30 @@ export default function Activity() {
           {logs.length === 0 && (
             <s-text color="subdued">No activity yet. Run a scan from the AI Workforce page.</s-text>
           )}
-          {logs.map((log) => (
-            <s-box key={log.id} padding="small" borderWidth="base" borderRadius="base">
-              <s-stack direction="block" gap="small">
-                <s-stack direction="inline" gap="small" alignItems="center">
-                  <s-text type="strong">{log.agentName}</s-text>
-                  <s-badge>{ACTION_LABELS[log.action] ?? log.action}</s-badge>
-                  <s-text color="subdued">
-                    {new Date(log.createdAt).toLocaleString()}
-                  </s-text>
+          {logs.map((log) => {
+            const meta = ACTION_META[log.action] ?? { label: log.action, tone: DEFAULT_ACTION_META.tone };
+            const error = executionError(log.action, log.detail);
+
+            return (
+              <s-box key={log.id} padding="small" borderWidth="base" borderRadius="base">
+                <s-stack direction="block" gap="small">
+                  <s-stack direction="inline" gap="small" alignItems="center">
+                    <s-text type="strong">{log.agentName}</s-text>
+                    <s-badge tone={meta.tone}>{meta.label}</s-badge>
+                    <s-text color="subdued">{formatTimestamp(new Date(log.createdAt))}</s-text>
+                  </s-stack>
+                  {error && (
+                    <span style={{ color: "var(--p-color-text-critical, #b30000)" }}>{error}</span>
+                  )}
+                  <s-box padding="small" background="subdued" borderRadius="base">
+                    <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      <code>{formatDetail(log.detail)}</code>
+                    </pre>
+                  </s-box>
                 </s-stack>
-                <s-box padding="small" background="subdued" borderRadius="base">
-                  <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                    <code>{formatDetail(log.detail)}</code>
-                  </pre>
-                </s-box>
-              </s-stack>
-            </s-box>
-          ))}
+              </s-box>
+            );
+          })}
         </s-stack>
       </s-section>
     </s-page>

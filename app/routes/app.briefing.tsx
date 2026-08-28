@@ -11,10 +11,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return { briefing, shop };
 };
 
+type BriefingItem = Awaited<ReturnType<typeof buildDailyBriefing>>["items"][number];
+
+function BriefingItemCard({ item, tone }: { item: BriefingItem; tone: "warning" | "success" }) {
+  return (
+    <s-box padding="base" borderWidth="base" borderRadius="base">
+      <s-stack direction="block" gap="small">
+        <s-text color="subdued">
+          {item.agentName} - {item.department}
+        </s-text>
+        <s-text>{item.situation}</s-text>
+        {tone === "warning" && <s-text>Recommendation: {item.recommendation}</s-text>}
+        <s-badge tone={tone}>Confidence {item.confidence}%</s-badge>
+      </s-stack>
+    </s-box>
+  );
+}
+
 export default function Briefing() {
   const { briefing } = useLoaderData<typeof loader>();
-  const attentionItems = briefing.items.filter((i) => i.needsAttention);
-  const healthyItems = briefing.items.filter((i) => !i.needsAttention);
+  const attentionItems = briefing.items.filter((i: BriefingItem) => i.needsAttention);
+  const healthyItems = briefing.items.filter((i: BriefingItem) => !i.needsAttention);
 
   return (
     <s-page heading="Daily Store Briefing">
@@ -50,21 +67,7 @@ export default function Briefing() {
         <s-section heading="Needs your attention">
           <s-stack direction="block" gap="base">
             {attentionItems.map((item) => (
-              <s-box
-                key={item.decisionId}
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-              >
-                <s-stack direction="block" gap="small">
-                  <s-text color="subdued">
-                    {item.agentName} - {item.department}
-                  </s-text>
-                  <s-text>{item.situation}</s-text>
-                  <s-text>Recommendation: {item.recommendation}</s-text>
-                  <s-badge tone="warning">Confidence {item.confidence}%</s-badge>
-                </s-stack>
-              </s-box>
+              <BriefingItemCard key={item.decisionId} item={item} tone="warning" />
             ))}
           </s-stack>
         </s-section>
@@ -74,28 +77,17 @@ export default function Briefing() {
         <s-section heading="Everything else">
           <s-stack direction="block" gap="base">
             {healthyItems.map((item) => (
-              <s-box
-                key={item.decisionId}
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-              >
-                <s-stack direction="block" gap="small">
-                  <s-text color="subdued">
-                    {item.agentName} - {item.department}
-                  </s-text>
-                  <s-text>{item.situation}</s-text>
-                  <s-badge tone="success">Confidence {item.confidence}%</s-badge>
-                </s-stack>
-              </s-box>
+              <BriefingItemCard key={item.decisionId} item={item} tone="success" />
             ))}
           </s-stack>
         </s-section>
       )}
 
       <s-section slot="aside" heading="Take action">
-        <s-link href="/app/approvals">Go to Approvals</s-link>
-        <s-link href="/app">Go to AI Workforce</s-link>
+        <s-stack direction="block" gap="small">
+          <s-link href="/app/approvals">Go to Approvals</s-link>
+          <s-link href="/app">Go to AI Workforce</s-link>
+        </s-stack>
       </s-section>
     </s-page>
   );

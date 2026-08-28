@@ -19,21 +19,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
   const formData = await request.formData();
+  const agentId = String(formData.get("agentId"));
+  const actionType = String(formData.get("actionType"));
 
   try {
-    await setAgentActionPermission(shop, String(formData.get("agentId")), String(formData.get("actionType")), {
+    await setAgentActionPermission(shop, agentId, actionType, {
       enabled: formData.get("enabled") === "true",
       requiresApproval: formData.get("requiresApproval") === "true",
     });
-    return { ok: true };
+    return { ok: true, agentId, actionType };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not update" };
+    return {
+      ok: false,
+      agentId,
+      actionType,
+      error: error instanceof Error ? error.message : "Could not update",
+    };
   }
 };
 
 export default function PermissionsSettings() {
   const { agentPermissions } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
+  const isSubmitting = fetcher.state !== "idle";
+  const submittingAgentId = fetcher.formData?.get("agentId");
+  const submittingActionType = fetcher.formData?.get("actionType");
 
   const submit = (agentId: string, actionType: string, enabled: boolean, requiresApproval: boolean) => {
     fetcher.submit(
@@ -45,6 +55,17 @@ export default function PermissionsSettings() {
       },
       { method: "POST" },
     );
+  };
+
+  const confirmAndSubmit = (
+    agentId: string,
+    actionType: string,
+    enabled: boolean,
+    requiresApproval: boolean,
+    confirmMessage: string | null,
+  ) => {
+    if (confirmMessage && !window.confirm(confirmMessage)) return;
+    submit(agentId, actionType, enabled, requiresApproval);
   };
 
   return (
@@ -61,37 +82,72 @@ export default function PermissionsSettings() {
             <s-box key={agent.id} padding="base" borderWidth="base" borderRadius="base">
               <s-stack direction="block" gap="small">
                 <s-text type="strong">{agent.name}</s-text>
-                {permissions.map((perm) => (
-                  <s-stack key={perm.actionType} direction="inline" gap="small" alignItems="center">
-                    <s-text>{perm.label}</s-text>
-                    <s-badge tone={perm.enabled ? "success" : "critical"}>
-                      {perm.enabled ? "Enabled" : "Disabled"}
-                    </s-badge>
-                    {perm.enabled && (
-                      <s-badge tone={perm.requiresApproval ? "warning" : "info"}>
-                        {perm.requiresApproval ? "Requires approval" : "Auto-executes"}
-                      </s-badge>
-                    )}
-                    <s-button
-                      variant="tertiary"
-                      onClick={() =>
-                        submit(agent.id, perm.actionType, !perm.enabled, perm.requiresApproval)
-                      }
+                {permissions.map((perm) => {
+                  const isThisRow = submittingAgentId === agent.id && submittingActionType === perm.actionType;
+                  const rowDisabled = isSubmitting && !isThisRow;
+
+                  return (
+                    <div
+                      key={perm.actionType}
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "var(--p-space-200, 8px)",
+                        alignItems: "center",
+                        opacity: rowDisabled ? 0.6 : 1,
+                      }}
                     >
-                      {perm.enabled ? "Disable" : "Enable"}
-                    </s-button>
-                    {perm.enabled && (
+                      <s-text>{perm.label}</s-text>
+                      <s-badge tone={perm.enabled ? "success" : "critical"}>
+                        {perm.enabled ? "Enabled" : "Disabled"}
+                      </s-badge>
+                      {perm.enabled && (
+                        <s-badge tone={perm.requiresApproval ? "warning" : "info"}>
+                          {perm.requiresApproval ? "Requires approval" : "Auto-executes"}
+                        </s-badge>
+                      )}
                       <s-button
                         variant="tertiary"
+                        disabled={isSubmitting}
+                        {...(isThisRow && isSubmitting ? { loading: true } : {})}
                         onClick={() =>
-                          submit(agent.id, perm.actionType, perm.enabled, !perm.requiresApproval)
+                          confirmAndSubmit(
+                            agent.id,
+                            perm.actionType,
+                            !perm.enabled,
+                            perm.requiresApproval,
+                            perm.enabled
+                              ? `Disable "${perm.label}" for ${agent.name}? This turns the finding into advice only — it will stop taking this action automatically.`
+                              : null,
+                          )
                         }
                       >
-                        {perm.requiresApproval ? "Allow auto-execute" : "Require approval"}
+                        {perm.enabled ? "Disable" : "Enable"}
                       </s-button>
-                    )}
-                  </s-stack>
-                ))}
+                      {perm.enabled && (
+                        <s-button
+                          variant="tertiary"
+                          tone={perm.requiresApproval ? "critical" : "neutral"}
+                          disabled={isSubmitting}
+                          {...(isThisRow && isSubmitting ? { loading: true } : {})}
+                          onClick={() =>
+                            confirmAndSubmit(
+                              agent.id,
+                              perm.actionType,
+                              perm.enabled,
+                              !perm.requiresApproval,
+                              perm.requiresApproval
+                                ? `Let ${agent.name} auto-execute "${perm.label}" without your approval from now on? You can require approval again at any time.`
+                                : null,
+                            )
+                          }
+                        >
+                          {perm.requiresApproval ? "Allow auto-execute" : "Require approval"}
+                        </s-button>
+                      )}
+                    </div>
+                  );
+                })}
               </s-stack>
             </s-box>
           ))}
