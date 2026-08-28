@@ -1,0 +1,253 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+// One AI employee for a given shop (tenant). Kept intentionally small for the
+// MVP vertical slice: identity + autonomy level. Rules/memory/tools land later.
+model Agent {
+  id          String   @id @default(cuid())
+  shop        String
+  key         String // stable slug, e.g. "chief-of-staff", "operations-manager"
+  name        String
+  jobTitle    String
+  department  String
+  description String
+  autonomy    String   @default("advisor") // advisor | draft | limited | autonomous
+  isCustom    Boolean  @default(false)
+  instructions String? // merchant-authored business instructions ("teach" this employee)
+  instructionsVersion Int @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tasks     AgentTask[]
+  decisions Decision[]
+  rules     AgentRule[]
+  messages  Message[]
+  memories  AgentMemory[]
+  instructionVersions   InstructionVersion[]
+  sentAgentMessages     AgentMessage[] @relation("SentAgentMessages")
+  receivedAgentMessages AgentMessage[] @relation("ReceivedAgentMessages")
+  actionPermissions     AgentActionPermission[]
+  documents             Document[]
+
+  @@unique([shop, key])
+  @@index([shop])
+}
+
+// A snapshot of an agent's instructions at one point in time. Written
+// every time the merchant edits instructions, so past versions can be viewed,
+// diffed at a glance, or restored.
+model InstructionVersion {
+  id            String   @id @default(cuid())
+  shop          String
+  agentId       String
+  version       Int
+  instructions  String
+  changeSummary String? // freeform note on what changed and why
+  createdAt     DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([shop, agentId, version])
+  @@index([shop, agentId])
+}
+
+// A formal delegation record between two AI employees. Distinct from
+// Message (the merchant<->agent chat log): this is agent-to-agent, and it's
+// what the Chief of Staff's synthesis step creates when it pulls in a
+// specialist's finding, and what a future task-routing feature would create
+// when one agent hands work to another.
+model AgentMessage {
+  id             String    @id @default(cuid())
+  shop           String
+  senderId       String
+  receiverId     String
+  task           String
+  context        String
+  priority       String    @default("medium") // low | medium | high | critical
+  deadline       DateTime?
+  expectedOutput String
+  status         String    @default("completed") // pending|in_progress|completed|failed
+  createdAt      DateTime  @default(now())
+
+  sender   Agent @relation("SentAgentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver Agent @relation("ReceivedAgentMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([shop, receiverId])
+  @@index([shop, senderId])
+}
+
+// One turn in a merchant<->agent chat. Kept simple: a flat, per-agent
+// timeline rather than a separate Conversation wrapper, since each agent has
+// exactly one ongoing chat with the merchant in this MVP.
+model Message {
+  id        String   @id @default(cuid())
+  shop      String
+  agentId   String
+  role      String // user | assistant
+  content   String
+  createdAt DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([shop, agentId, createdAt])
+}
+
+model AgentTask {
+  id          String   @id @default(cuid())
+  shop        String
+  agentId     String
+  title       String
+  status      String   @default("pending") // pending|running|waiting_approval|blocked|completed|failed|cancelled
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  agent     Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  decisions Decision[]
+
+  @@index([shop, agentId])
+}
+
+// A single explainable recommendation/finding produced by an agent for one task.
+model Decision {
+  id                String   @id @default(cuid())
+  shop              String
+  agentId           String
+  taskId            String
+  situation         String
+  dataUsed          String // JSON-encoded snapshot of the data the agent looked at
+  recommendation    String
+  confidence         Int // 0-100
+  requiresApproval  Boolean  @default(false)
+  approvalStatus    String   @default("none") // none|pending|approved|rejected
+  actionPayload     String? // JSON-encoded params for the gated Shopify action, if any
+  executedAt        DateTime?
+  executionResult   String?
+  createdAt         DateTime @default(now())
+
+  agent Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  task  AgentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([shop, agentId])
+  @@index([shop, approvalStatus])
+}
+
+// Deterministic, machine-readable business rule scoped to one agent. Enforced
+// in code before an agent proposes or executes an action - never left to the
+// LLM to "remember" on its own.
+model AgentRule {
+  id          String   @id @default(cuid())
+  shop        String
+  agentId     String
+  key         String // e.g. "low_stock_threshold", "min_margin_alert_percent"
+  value       String // JSON-encoded value
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([shop, agentId, key])
+  @@index([shop, agentId])
+}
+
+// Qualitative, merchant-taught knowledge about how the business runs -
+// distinct from AgentRule, which holds deterministic, machine-enforced
+// thresholds. A memory is read into the agent's prompt as context; it never
+// gates a Shopify write the way a rule can.
+model AgentMemory {
+  id         String    @id @default(cuid())
+  shop       String
+  agentId    String
+  type       String // preference | fact | experience | instruction
+  content    String
+  source     String    @default("merchant") // merchant | agent | system
+  importance Int       @default(3) // 1 (low) - 5 (high)
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([shop, agentId])
+}
+
+// Merchant-editable override of an action's approval requirement.
+// ACTION_POLICIES in permissions.server.ts is the whitelist of what an agent
+// may ever propose and each entry's *default* approval requirement; this
+// table lets the merchant tighten or loosen that default per agent per
+// action, without ever being able to add an action outside the whitelist.
+model AgentActionPermission {
+  id               String   @id @default(cuid())
+  shop             String
+  agentId          String
+  actionType       String // must match a key in ACTION_POLICIES
+  enabled          Boolean  @default(true)
+  requiresApproval Boolean  @default(true)
+  updatedAt        DateTime @updatedAt
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([shop, agentId, actionType])
+  @@index([shop, agentId])
+}
+
+// A merchant-uploaded source of business knowledge: SOPs, brand
+// guidelines, supplier docs, product manuals, notes. Plain text only in this
+// MVP (paste or .txt upload) - retrieval below is keyword-overlap ranking,
+// not vector similarity. A real embeddings/vector-DB upgrade can replace
+// retrieveRelevantDocuments() without changing this schema.
+model Document {
+  id        String   @id @default(cuid())
+  shop      String
+  agentId   String? // null = shared across every agent
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+
+  agent Agent? @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([shop, agentId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  shop        String
+  agentId     String?
+  decisionId  String?
+  action      String
+  detail      String // JSON-encoded metadata (before/after, params, result)
+  createdAt   DateTime @default(now())
+
+  @@index([shop, createdAt])
+}
